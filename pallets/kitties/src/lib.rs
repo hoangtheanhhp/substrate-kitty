@@ -28,20 +28,17 @@ pub mod pallet {
 	type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
+	type QuantityType = u16;
 	// Struct for Gift information.
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
 	#[scale_info(skip_type_params(T))]
-	pub struct Gift {
-		gift_type: GiftType,
-		quantity: u16 = 0,
-	}
 
 
 	// Set Gift type in Gift struct.
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
 	#[scale_info(skip_type_params(T))]
 	#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-	pub enum GiftType {
+	pub enum Gift {
 		Rose,
 		Petty,
 		Cream,
@@ -72,35 +69,13 @@ pub mod pallet {
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
-		/// A new Kitty was sucessfully created. \[sender, kitty_id\]
-		Created(T::AccountId, T::Hash),
-		/// Kitty price was sucessfully set. \[sender, kitty_id, new_price\]
-		PriceSet(T::AccountId, T::Hash, Option<BalanceOf<T>>),
-		/// A Kitty was sucessfully transferred. \[from, to, kitty_id\]
-		Transferred(T::AccountId, T::AccountId, T::Hash),
-		/// A Kitty was sucessfully bought. \[buyer, seller, kitty_id, bid_price\]
-		Bought(T::AccountId, T::AccountId, T::Hash, BalanceOf<T>),
-		Donated(T::AccountId, T::AccountId, T::Hash),
+		Donated(T::AccountId, T::AccountId, Gift, QuantityType),
 	}
-
-	// Storage items.
 	#[pallet::storage]
-	#[pallet::getter(fn basket)]
-	/// Stores a Kitty's unique traits, owner and price.
-	pub(super) type Basket<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, Gift>;
-
-
-	#[pallet::storage]
-	#[pallet::getter(fn kitties)]
-	/// Stores a Kitty's unique traits, owner and price.
-	pub(super) type Kitties<T: Config> = StorageMap<_, Twox64Concat, T::Hash, Kitty<T>>;
-
-	#[pallet::storage]
-	#[pallet::getter(fn kitties_owned)]
+	#[pallet::getter(fn gifts_owned)]
 	/// Keeps track of what accounts own what Kitty.
-	pub(super) type KittiesOwned<T: Config> =
-		StorageMap<_, Twox64Concat, T::AccountId, BoundedVec<T::Hash, T::MaxKittyOwned>, ValueQuery>;
-
+	pub(super) type GiftsOwned<T: Config> =
+		StorageMap<_, Twox64Concat, T::AccountId, BoundedVec<Gift, QuantityType>>;
 	// Our pallet's genesis configuration.
 	#[pallet::genesis_config]
 	pub struct GenesisConfig<T: Config> {
@@ -138,16 +113,17 @@ pub mod pallet {
 		pub fn donate(
 			origin: OriginFor<T>,
 			to: T::AccountId,
-			gift_type: T::Gift
+			gift: Gift,
+			quantity: QuantityType,
 		) -> DispatchResult {
 			let from = ensure_signed(origin)?;
 
 			// Verify the kitty is not transferring back to its owner.
 			ensure!(from != to, <Error<T>>::DonateToSelf);
 
-			Self::transfer_kitty_to(&kitty_id, &to)?;
+			Self::execute_donate(from, to, gift, quantity)?;
 
-			Self::deposit_event(Event::Transferred(from, to, kitty_id));
+			Self::deposit_event(Event::Donated(from, to, gift, quantity));
 
 			Ok(())
 		}
@@ -157,9 +133,11 @@ pub mod pallet {
 
 	impl<T: Config> Pallet<T> {
 		#[transactional]
-		pub fn donate_to(
-			gift_type: &T::Gift,
+		pub fn execute_donate(
+			from: &T::AccountId,
 			to: &T::AccountId,
+			gift: Gift,
+			quantity: QuantityType,
 		) -> Result<(), Error<T>> {
 
 			// Remove `kitty_id` from the KittyOwned vector of `prev_kitty_owner`
