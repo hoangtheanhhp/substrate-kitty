@@ -19,6 +19,7 @@ pub mod pallet {
 	};
 	use sp_io::hashing::blake2_128;
 	use scale_info::TypeInfo;
+	use std::collections::HashMap;
 
 	#[cfg(feature = "std")]
 	use serde::{Deserialize, Serialize};
@@ -30,13 +31,17 @@ pub mod pallet {
 	// Struct for Gift information.
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
 	#[scale_info(skip_type_params(T))]
+	pub struct Gift {
+		gift_type: GiftType,
+		quantity: u16 = 0,
+	}
 
 
 	// Set Gift type in Gift struct.
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
 	#[scale_info(skip_type_params(T))]
 	#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-	pub enum Gift {
+	pub enum GiftType {
 		Rose,
 		Petty,
 		Cream,
@@ -79,11 +84,11 @@ pub mod pallet {
 	}
 
 	// Storage items.
-
 	#[pallet::storage]
-	#[pallet::getter(fn kitty_cnt)]
-	/// Keeps track of the number of Kitties in existence.
-	pub(super) type KittyCnt<T: Config> = StorageValue<_, u64, ValueQuery>;
+	#[pallet::getter(fn basket)]
+	/// Stores a Kitty's unique traits, owner and price.
+	pub(super) type Basket<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, Gift>;
+
 
 	#[pallet::storage]
 	#[pallet::getter(fn kitties)]
